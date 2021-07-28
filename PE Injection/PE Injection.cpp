@@ -5,11 +5,13 @@ DWORD RVA_Convert(DWORD RVA, BYTE* data) {
 	PIMAGE_DOS_HEADER dos_header = (PIMAGE_DOS_HEADER)data;
 	PIMAGE_NT_HEADERS nt_header = (PIMAGE_NT_HEADERS)(data + dos_header->e_lfanew);
 	int section = 0;
+	//find section
 	for (section = 0; section < nt_header->FileHeader.NumberOfSections; section++) {
 		PIMAGE_SECTION_HEADER sec_header = (PIMAGE_SECTION_HEADER)(data + dos_header->e_lfanew + 248 + 40 * section);
 		if (sec_header->VirtualAddress > RVA) break;
 	}
 	section -= 1;
+	//calculate raw address from rva
 	PIMAGE_SECTION_HEADER sec_header = (PIMAGE_SECTION_HEADER)(data + dos_header->e_lfanew + 248 + 40 * section);
 	DWORD Raw = (RVA - sec_header->VirtualAddress) + sec_header->PointerToRawData;
 	return Raw;
@@ -17,18 +19,19 @@ DWORD RVA_Convert(DWORD RVA, BYTE* data) {
 void LoadExe(BYTE* data){
 	PIMAGE_DOS_HEADER dos_header = (PIMAGE_DOS_HEADER)data;
 	PIMAGE_NT_HEADERS nt_header = (PIMAGE_NT_HEADERS)(data + dos_header->e_lfanew);
-
+	//get current process handle
 	HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetCurrentProcessId());
 	if (hProc == INVALID_HANDLE_VALUE) return;
 	PVOID loc = VirtualAlloc(NULL, nt_header->OptionalHeader.SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 	if (loc == NULL) return;
+	//write header 
 	memcpy(loc, data, nt_header->OptionalHeader.SizeOfHeaders);
 
 	//fixing .reloc table
 	DWORD deltaImageBase = (DWORD)loc - nt_header->OptionalHeader.ImageBase;
 	DWORD relocRVA = nt_header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress;
 	DWORD relocRaw = RVA_Convert(relocRVA, data);
-
+	
 	PIMAGE_BASE_RELOCATION relocTable = (PIMAGE_BASE_RELOCATION)(data + relocRaw);
 	while (relocTable->SizeOfBlock > 0) {
 		DWORD entryCount = (relocTable->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / 2;
@@ -61,7 +64,7 @@ void LoadExe(BYTE* data){
 		}
 		importTable = (PIMAGE_IMPORT_DESCRIPTOR)((BYTE*)importTable + sizeof(IMAGE_IMPORT_DESCRIPTOR));
 	}
-	//write 
+	//write sections
 	for (int section = 0; section < nt_header->FileHeader.NumberOfSections; section++) {
 		PIMAGE_SECTION_HEADER sec_header = (PIMAGE_SECTION_HEADER)(data + dos_header->e_lfanew + 248 + 40 * section);
 		memcpy((PVOID)((DWORD)loc + sec_header->VirtualAddress), (PVOID)((DWORD)data + sec_header->PointerToRawData),
