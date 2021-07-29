@@ -91,7 +91,6 @@ int main() {
 	DWORD shellcodeSize = GetFileSize(hFile, NULL);
 	BYTE* shellcode = (BYTE*)malloc(shellcodeSize + 1);
 	memset(shellcode, 0, shellcodeSize + 1);
-	PIMAGE_IMPORT_BY_NAME x;
 	DWORD read;
 	ReadFile(hFile, shellcode, shellcodeSize, &read, NULL);
 	CloseHandle(hFile);
